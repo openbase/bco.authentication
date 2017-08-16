@@ -10,7 +10,7 @@
     <parent>
         <groupId>org.openbase.bco</groupId>
         <artifactId>authentication</artifactId>
-        <version>1.4-SNAPSHOT</version>
+        <version>1.4.0-SNAPSHOT</version>
     </parent>    
     
     <url>https://github.com/openbase/bco.authentication/wiki</url>
@@ -68,12 +68,12 @@
         <dependency>
             <groupId>org.openbase.bco</groupId>
             <artifactId>authentication.core</artifactId>
-            <version>1.4-SNAPSHOT</version>
+            <version>1.4.0-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>org.openbase.bco</groupId>
             <artifactId>authentication.lib</artifactId>
-            <version>1.4-SNAPSHOT</version>
+            <version>1.4.0-SNAPSHOT</version>
         </dependency>
         <dependency>
             <groupId>org.openbase</groupId>
