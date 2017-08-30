@@ -22,7 +22,6 @@ package org.openbase.bco.authentication.lib;
  * #L%
  */
 import java.io.IOException;
-import java.io.StreamCorruptedException;
 import java.security.KeyPair;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
@@ -34,7 +33,6 @@ import org.openbase.jps.core.JPService;
 import org.openbase.jps.exception.JPNotAvailableException;
 import javax.crypto.BadPaddingException;
 import org.openbase.jul.exception.CouldNotPerformException;
-import org.openbase.jul.exception.FatalImplementationErrorException;
 import org.openbase.jul.exception.InitializationException;
 import org.openbase.jul.exception.NotAvailableException;
 import org.openbase.jul.exception.PermissionDeniedException;
@@ -57,7 +55,7 @@ import rst.domotic.authentication.TicketSessionKeyWrapperType.TicketSessionKeyWr
 public class SessionManager {
 
     private static final org.slf4j.Logger LOGGER = LoggerFactory.getLogger(SessionManager.class);
-    private static final String STORE_FILENAME = "client_crediential_store.json";
+    private static final String STORE_FILENAME = "client_credential_store.json";
 
     private static SessionManager instance;
 
@@ -359,6 +357,25 @@ public class SessionManager {
             loginObervable.notifyObservers(false);
         } catch (CouldNotPerformException ex) {
             LOGGER.warn("Could not notify logout to observer", ex);
+        }
+    }
+    
+    /**
+     * This method performs a complete logout by also clearing the previous client id.
+     * If the normal logout is used and a new user logs in he will be logged in at the last
+     * client every time. This method is mostly necessary for unit tests. 
+     */
+    public synchronized void completeLogout() {
+        this.userId = null;
+        this.userPassword = null;
+        this.previousClientId = null;
+        this.clientId = null;
+        this.sessionKey = null;
+        this.ticketAuthenticatorWrapper = null;
+        try {
+            loginObervable.notifyObservers(false);
+        } catch (CouldNotPerformException ex) {
+            LOGGER.warn("Could not notify complete logout to observer", ex);
         }
     }
 
@@ -746,6 +763,27 @@ public class SessionManager {
         }
         byte[] key = this.store.getCredentials(clientId);
         return key;
+    }
+
+    /**
+     * If a user and/or client is logged in, this returns the concatenation of both IDs.
+     *
+     * @return userId@clientId
+     */
+    public String getUserAtClientId() {
+        String userAtClient = "";
+
+        if (userId != null) {
+            userAtClient += userId;
+        }
+
+        userAtClient += "@";
+
+        if (clientId != null) {
+            userAtClient += clientId;
+        }
+
+        return userAtClient;
     }
 
     public String getUserId() {
