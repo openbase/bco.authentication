@@ -4,7 +4,7 @@
     
     <groupId>org.openbase.bco</groupId>
     <artifactId>authentication</artifactId>
-    <version>1.4.4-SNAPSHOT</version>
+    <version>1.4.4</version>
 
     <name>BCO Authentication</name>
     <inceptionYear>2017</inceptionYear>
@@ -63,7 +63,7 @@
         <connection>scm:git:https://github.com/openbase/bco.authentication.git</connection>
         <developerConnection>scm:git:https://github.com/openbase/bco.authentication.git</developerConnection>
         <url>https://github.com/openbase/bco.authentication.git</url>
-      <tag>HEAD</tag>
+      <tag>v1.4.4</tag>
   </scm>
     
     <build>
