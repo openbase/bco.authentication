@@ -23,8 +23,11 @@ package org.openbase.bco.authentication.lib;
  */
 
 import com.google.protobuf.ProtocolStringList;
+
 import java.util.Map;
+
 import org.openbase.jul.exception.CouldNotPerformException;
+import org.openbase.jul.exception.InvalidStateException;
 import org.openbase.jul.exception.NotAvailableException;
 import org.openbase.jul.extension.protobuf.IdentifiableMessage;
 import org.openbase.jul.extension.rsb.scope.ScopeGenerator;
@@ -43,9 +46,9 @@ import rst.domotic.unit.UnitTemplateType.UnitTemplate.UnitType;
  * @author <a href="mailto:cromankiewicz@techfak.uni-bielefeld.de">Constantin Romankiewicz</a>
  */
 public class AuthorizationHelper {
-    
+
     private static final org.slf4j.Logger LOGGER = LoggerFactory.getLogger(AuthorizationHelper.class);
-    
+
     private enum Type {
         READ,
         WRITE,
@@ -57,13 +60,13 @@ public class AuthorizationHelper {
      * for example to query information about the unit's state who has this permissionConfig.
      *
      * @param unitConfig The unitConfig of the unit the user wants to read.
-     * @param userId ID of the user whose permissions should be checked.
-     * @param groups All available groups in the system, indexed by their group ID.
-     * @param locations All available locations in the system, indexed by their id.
+     * @param userId     ID of the user whose permissions should be checked.
+     * @param groups     All available groups in the system, indexed by their group ID.
+     * @param locations  All available locations in the system, indexed by their id.
      * @return True if the user can read from the unit, false if not.
      * @throws CouldNotPerformException If the permissions could not be checked, probably because of invalid location information.
      */
-    public static boolean canRead(UnitConfig unitConfig, String userId, Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> groups, Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> locations) throws CouldNotPerformException {
+    public static boolean canRead(UnitConfig unitConfig, String userId, Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> groups, Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> locations) {
         return canDo(unitConfig, userId, groups, locations, Type.READ);
     }
 
@@ -72,13 +75,13 @@ public class AuthorizationHelper {
      * for example to run any action on a unit.
      *
      * @param unitConfig The unitConfig of the unit the user wants to write to.
-     * @param userId ID of the user whose permissions should be checked.
-     * @param groups All available groups in the system, indexed by their group ID.
-     * @param locations All available locations in the system, indexed by their id.
+     * @param userId     ID of the user whose permissions should be checked.
+     * @param groups     All available groups in the system, indexed by their group ID.
+     * @param locations  All available locations in the system, indexed by their id.
      * @return True if the user can write to the unit, false if not.
      * @throws CouldNotPerformException If the permissions could not be checked, probably because of invalid location information.
      */
-    public static boolean canWrite(UnitConfig unitConfig, String userId, Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> groups, Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> locations) throws CouldNotPerformException {
+    public static boolean canWrite(UnitConfig unitConfig, String userId, Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> groups, Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> locations) {
         return canDo(unitConfig, userId, groups, locations, Type.WRITE);
     }
 
@@ -86,13 +89,13 @@ public class AuthorizationHelper {
      * Checks whether a user has the permission to access a unit with the given permissionConfig.
      *
      * @param unitConfig The unitConfig of the unit the user wants to access.
-     * @param userId ID of the user whose permissions should be checked.
-     * @param groups All available groups in the system, indexed by their group ID.
-     * @param locations All available locations in the system, indexed by their id.
+     * @param userId     ID of the user whose permissions should be checked.
+     * @param groups     All available groups in the system, indexed by their group ID.
+     * @param locations  All available locations in the system, indexed by their id.
      * @return True if the user can access the unit, false if not.
      * @throws CouldNotPerformException If the permissions could not be checked, probably because of invalid location information.
      */
-    public static boolean canAccess(UnitConfig unitConfig, String userId, Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> groups, Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> locations) throws CouldNotPerformException {
+    public static boolean canAccess(UnitConfig unitConfig, String userId, Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> groups, Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> locations) {
         return canDo(unitConfig, userId, groups, locations, Type.ACCESS);
     }
 
@@ -100,41 +103,50 @@ public class AuthorizationHelper {
      * Checks all permissions for a user.
      *
      * @param unitConfig The unitConfig of the unit for which the permissions apply.
-     * @param userId ID of the user whose permissions should be checked.
-     * @param groups All available groups in the system, indexed by their group ID.
-     * @param locations All available locations in the system, indexed by their id.
+     * @param userId     ID of the user whose permissions should be checked.
+     * @param groups     All available groups in the system, indexed by their group ID.
+     * @param locations  All available locations in the system, indexed by their id.
      * @return Permission object representing the maximum permissions for the given user on the given unit.
      * @throws CouldNotPerformException If the permissions could not be checked, probably because of invalid location information.
      */
     public static Permission getPermission(UnitConfig unitConfig, String userId, Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> groups, Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> locations) throws CouldNotPerformException {
         return Permission.newBuilder()
-          .setAccess(canAccess(unitConfig, userId, groups, locations))
-          .setRead(canRead(unitConfig, userId, groups, locations))
-          .setWrite(canWrite(unitConfig, userId, groups, locations))
-          .build();
+                .setAccess(canAccess(unitConfig, userId, groups, locations))
+                .setRead(canRead(unitConfig, userId, groups, locations))
+                .setWrite(canWrite(unitConfig, userId, groups, locations))
+                .build();
     }
 
-    private static boolean canDo(UnitConfig unitConfig, String userId, Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> groups, Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> locations, Type type) throws CouldNotPerformException {
-        UnitConfig locationUnitConfig = getLocationUnitConfig(unitConfig.getPlacementConfig().getLocationId(), locations);
+    private static boolean canDo(UnitConfig unitConfig, String userId, Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> groups, Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> locations, Type type) {
+        try {
+            final UnitConfig locationUnitConfig = getLocationUnitConfig(unitConfig.getPlacementConfig().getLocationId(), locations);
 
-        boolean isRoot = unitConfig.getType() == UnitType.LOCATION && unitConfig.getLocationConfig().getRoot();
+            boolean isRoot = unitConfig.getType() == UnitType.LOCATION && unitConfig.getLocationConfig().getRoot();
 
-        if (locationUnitConfig != null && !isRoot) {
-            if (!canRead(locationUnitConfig, userId, groups, locations)) {
-                return false;
+            if (locationUnitConfig != null && !isRoot) {
+                if (!canRead(locationUnitConfig, userId, groups, locations)) {
+                    return false;
+                }
             }
+        } catch (NotAvailableException ex) {
+            // referred location available so the check is only performed with the related unit.
         }
 
-        return canDo(getPermissionConfig(unitConfig, locations), userId, groups, locations, type);
+        try {
+            return canDo(getPermissionConfig(unitConfig, locations), userId, groups, locations, type);
+        } catch (CouldNotPerformException ex) {
+            LOGGER.warn("can not perform the canDo check! Permission will be denied!", ex);
+            return false;
+        }
     }
 
     /**
      * Internal helper method to check one of the permissions on a unit.
      *
      * @param permissionConfig The unit for which the permissions apply.
-     * @param userId ID of the user whose permissions should be checked.
-     * @param groups All available groups in the system, indexed by their group ID.
-     * @param type The permission type to check.
+     * @param userId           ID of the user whose permissions should be checked.
+     * @param groups           All available groups in the system, indexed by their group ID.
+     * @param type             The permission type to check.
      * @return True if the user has the given permission, false if not.
      */
     private static boolean canDo(PermissionConfig permissionConfig, String userId, Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> groups, Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> locations, Type type) {
@@ -167,8 +179,8 @@ public class AuthorizationHelper {
 
         ProtocolStringList groupMembers;
         for (MapFieldEntry entry : permissionConfig.getGroupPermissionList()) {
-            if(groups.get(entry.getGroupId()) == null) {
-                LOGGER.warn("No Group for id["+entry.getGroupId()+"] available");
+            if (groups.get(entry.getGroupId()) == null) {
+                LOGGER.warn("No Group for id[" + entry.getGroupId() + "] available");
                 continue;
             }
             groupMembers = groups.get(entry.getGroupId()).getMessage().getAuthorizationGroupConfig().getMemberIdList();
@@ -183,7 +195,7 @@ public class AuthorizationHelper {
     }
 
     private static boolean permitted(Permission permission, Type type) {
-        switch(type) {
+        switch (type) {
             case READ:
                 return permission.getRead();
             case WRITE:
@@ -195,7 +207,7 @@ public class AuthorizationHelper {
         }
     }
 
-    private static PermissionConfig getPermissionConfig(UnitConfig unitConfig, Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> locations) throws CouldNotPerformException {
+    private static PermissionConfig getPermissionConfig(UnitConfig unitConfig, Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> locations) throws NotAvailableException {
         PermissionConfig unitPermissionConfig = null;
         PermissionConfig locationPermissionConfig = null;
 
@@ -203,26 +215,39 @@ public class AuthorizationHelper {
         if (unitConfig.hasPermissionConfig()) {
             unitPermissionConfig = unitConfig.getPermissionConfig();
         }
-        // If the unit has a parent location (i.e. is not the root location), we use the PermissionConfig of the parent(s).
-        UnitConfig locationUnitConfig = getLocationUnitConfig(unitConfig.getPlacementConfig().getLocationId(), locations);
 
-        if (locationUnitConfig != null && (unitConfig.getType() != UnitType.LOCATION || !unitConfig.getLocationConfig().hasRoot() || !unitConfig.getLocationConfig().getRoot())) {
-            locationPermissionConfig = getPermissionConfig(locationUnitConfig, locations);
+        try {
+            // If the unit has a parent location (i.e. is not the root location), we use the PermissionConfig of the parent(s).
+            UnitConfig locationUnitConfig = getLocationUnitConfig(unitConfig.getPlacementConfig().getLocationId(), locations);
+            if ((unitConfig.getType() != UnitType.LOCATION || !unitConfig.getLocationConfig().hasRoot() || !unitConfig.getLocationConfig().getRoot())) {
+                locationPermissionConfig = getPermissionConfig(locationUnitConfig, locations);
+            }
+            if (unitPermissionConfig != null || locationPermissionConfig != null) {
+                return mergePermissionConfigs(unitPermissionConfig, locationPermissionConfig);
+            }
+        } catch (NotAvailableException ex) {
+            // location does not exists so only use unit permissions.
+            return unitPermissionConfig;
         }
 
-        if (unitPermissionConfig != null || locationPermissionConfig != null) {
-            return mergePermissionConfigs(unitPermissionConfig, locationPermissionConfig);
+        try {
+            throw new NotAvailableException("PermissionConfig of Unit[" + ScopeGenerator.generateStringRep(unitConfig.getScope()) + "]");
+        } catch (CouldNotPerformException ex) {
+            throw new NotAvailableException("PermissionConfig");
         }
-
-        throw new NotAvailableException("PermissionConfig of unit " + ScopeGenerator.generateStringRep(unitConfig.getScope()));
     }
 
     private static UnitConfig getLocationUnitConfig(String locationId, Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> locations) throws NotAvailableException {
-        if (locations.containsKey(locationId)) {
-            return locations.get(locationId).getMessage();
+        try {
+            if (locations.containsKey(locationId)) {
+                return locations.get(locationId).getMessage();
+            } else {
+                throw new InvalidStateException("Registry does not contains requested location Entry[" + locationId + "]");
+            }
+        } catch (CouldNotPerformException | NullPointerException ex) {
+            // null pointer can occur if the registry is shutting down between the "contains" check and the "get".
+            throw new NotAvailableException("Location[" + locationId + "]", ex);
         }
-
-        return null;
     }
 
     private static PermissionConfig mergePermissionConfigs(PermissionConfig unitPermissionConfig, PermissionConfig locationPermissionConfig) {
