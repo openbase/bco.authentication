@@ -26,17 +26,24 @@ import com.google.protobuf.ProtocolStringList;
 
 import java.util.Map;
 
+import jnr.ffi.annotations.In;
 import org.openbase.jul.exception.CouldNotPerformException;
 import org.openbase.jul.exception.InvalidStateException;
 import org.openbase.jul.exception.NotAvailableException;
+import org.openbase.jul.exception.StackTracePrinter;
+import org.openbase.jul.exception.printer.ExceptionPrinter;
+import org.openbase.jul.exception.printer.LogLevel;
 import org.openbase.jul.extension.protobuf.IdentifiableMessage;
 import org.openbase.jul.extension.rsb.scope.ScopeGenerator;
+import org.openbase.jul.processing.StringProcessor;
 import org.slf4j.LoggerFactory;
 import rst.domotic.authentication.PermissionConfigType.PermissionConfig;
 import rst.domotic.authentication.PermissionConfigType.PermissionConfig.MapFieldEntry;
 import rst.domotic.authentication.PermissionType.Permission;
 import rst.domotic.unit.UnitConfigType.UnitConfig;
 import rst.domotic.unit.UnitTemplateType.UnitTemplate.UnitType;
+
+import javax.xml.stream.events.NotationDeclaration;
 
 /**
  * Helper class to determine the permissions for a given user on a given permission configuration.
@@ -115,18 +122,29 @@ public class AuthorizationHelper {
     }
 
     private static boolean canDo(UnitConfig unitConfig, String userId, Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> groups, Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> locations, Type type) {
-        try {
-            final UnitConfig locationUnitConfig = getLocationUnitConfig(unitConfig.getPlacementConfig().getLocationId(), locations);
 
-            boolean isRoot = unitConfig.getType() == UnitType.LOCATION && unitConfig.getLocationConfig().getRoot();
+        // BUG WORKAROUND
+        // todo remove me after fixing openbase/bco.authentication#61
+        if(unitConfig.getType() == UnitType.UNKNOWN) {
+            return true;
+        }
 
-            if (locationUnitConfig != null && !isRoot) {
-                if (!canRead(locationUnitConfig, userId, groups, locations)) {
+        if (!isAuthenticationUnit(unitConfig) && !isRootLocation(unitConfig, locations)) {
+            // check if the given user has read permissions for the parent location otherwise skip all further checks
+            try {
+                if (!canRead(getLocationUnitConfig(unitConfig.getPlacementConfig().getLocationId(), locations), userId, groups, locations)) {
                     return false;
                 }
+            } catch (NotAvailableException ex) {
+                String scope;
+                try {
+                    scope = ScopeGenerator.generateStringRep(unitConfig.getScope());
+                } catch (CouldNotPerformException exx) {
+                    scope = "?";
+                }
+                LOGGER.warn("PermissionConfig of Unit[" + scope + "] is denied!", ex);
+                return false;
             }
-        } catch (NotAvailableException ex) {
-            // referred location available so the check is only performed with the related unit.
         }
 
         try {
@@ -146,7 +164,7 @@ public class AuthorizationHelper {
      * @param type             The permission type to check.
      * @return True if the user has the given permission, false if not.
      */
-    private static boolean canDo(PermissionConfig permissionConfig, String userId, Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> groups, Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> locations, Type type) {
+    private static boolean canDo(final PermissionConfig permissionConfig, final String userId, final Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> groups, final Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> locations, Type type) {
         // Other
         if (permitted(permissionConfig.getOtherPermission(), type)) {
             return true;
@@ -175,7 +193,7 @@ public class AuthorizationHelper {
         }
 
         ProtocolStringList groupMembers;
-        for (MapFieldEntry entry : permissionConfig.getGroupPermissionList()) {
+        for (final MapFieldEntry entry : permissionConfig.getGroupPermissionList()) {
             if (groups.get(entry.getGroupId()) == null) {
                 LOGGER.warn("No Group for id[" + entry.getGroupId() + "] available");
                 continue;
@@ -191,7 +209,7 @@ public class AuthorizationHelper {
         return false;
     }
 
-    private static boolean permitted(Permission permission, Type type) {
+    private static boolean permitted(final Permission permission, final Type type) {
         switch (type) {
             case READ:
                 return permission.getRead();
@@ -204,34 +222,50 @@ public class AuthorizationHelper {
         }
     }
 
-    private static PermissionConfig getPermissionConfig(UnitConfig unitConfig, Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> locations) throws NotAvailableException {
+    private static PermissionConfig getPermissionConfig(final UnitConfig unitConfig, final Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> locations) throws NotAvailableException {
         try {
-            PermissionConfig unitPermissionConfig = null;
-            PermissionConfig locationPermissionConfig = null;
-
-            // If the unit itself has a PermissionConfig, we use this one.
-            if (unitConfig.hasPermissionConfig()) {
-                unitPermissionConfig = unitConfig.getPermissionConfig();
+            if (unitConfig == null) {
+                throw new NotAvailableException("UnitConfig");
             }
 
+            // the root location should always use its own permissions to terminate the recursive permission resolution.
+            if (isRootLocation(unitConfig, locations)) {
+                if (!unitConfig.hasPermissionConfig()) {
+                    throw new InvalidStateException("The root location does not provide a permission config!");
+                }
+                return unitConfig.getPermissionConfig();
+            }
+
+            // user or authentication group permissions are independent of there location referred location.
+            if (isAuthenticationUnit(unitConfig)) {
+                if (!unitConfig.hasPermissionConfig()) {
+                    throw new InvalidStateException(StringProcessor.transformUpperCaseToCamelCase(unitConfig.getType().name()) + " should always provide a permission config!");
+                }
+                return unitConfig.getPermissionConfig();
+            }
+
+            // verify needed location information
+            if (locations == null || locations.isEmpty()) {
+                throw new InvalidStateException("No location information available for permission resolution!");
+            }
+
+            PermissionConfig unitPermissionConfig;
+
+            // resolve parent permissions
             try {
-                // If the unit has a parent location (i.e. is not the root location), we use the PermissionConfig of the parent(s).
-                UnitConfig locationUnitConfig = getLocationUnitConfig(unitConfig.getPlacementConfig().getLocationId(), locations);
-                if ((unitConfig.getType() != UnitType.LOCATION || !unitConfig.getLocationConfig().hasRoot() || !unitConfig.getLocationConfig().getRoot())) {
-                    locationPermissionConfig = getPermissionConfig(locationUnitConfig, locations);
-                }
-                if (unitPermissionConfig != null || locationPermissionConfig != null) {
-                    return mergePermissionConfigs(unitPermissionConfig, locationPermissionConfig);
-                }
+                final UnitConfig locationUnitConfig = getLocationUnitConfig(unitConfig.getPlacementConfig().getLocationId(), locations);
+                unitPermissionConfig = getPermissionConfig(locationUnitConfig, locations);
             } catch (NotAvailableException ex) {
-                // location does not exists so only use unit permissions.
+                throw new InvalidStateException("Parent location does not provide a permission config!", ex);
             }
 
-            if (unitPermissionConfig == null) {
-                throw new NotAvailableException("UnitPermissions");
+            // resolve unit permissions and merge those with the parent location permissions
+            if (unitConfig.hasPermissionConfig()) {
+                unitPermissionConfig = mergePermissionConfigs(unitConfig.getPermissionConfig(), unitPermissionConfig);
             }
 
             return unitPermissionConfig;
+
         } catch (CouldNotPerformException ex) {
             String scope;
             try {
@@ -239,45 +273,91 @@ public class AuthorizationHelper {
             } catch (CouldNotPerformException exx) {
                 scope = "?";
             }
-            throw new NotAvailableException("PermissionConfig of Unit[" + scope + "]");
+            throw new NotAvailableException("PermissionConfig of Unit[" + scope + "]", ex);
         }
     }
 
-    private static UnitConfig getLocationUnitConfig(String locationId, Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> locations) throws NotAvailableException {
+    private static boolean isRootLocation(final UnitConfig unitConfig, final Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> locations) {
+
+        // if this unit is not a location it can not be a root location
+        if (unitConfig.getType() != UnitType.LOCATION) {
+            return false;
+        }
+
+        // if no locations are available this location should be the root location
+        if (locations.isEmpty()) {
+            return true;
+        }
+
+        // is this unit a root location?
+        return unitConfig.getLocationConfig().hasRoot() && unitConfig.getLocationConfig().getRoot();
+    }
+
+    private static UnitConfig getRootLocationUnitConfig(final Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> locations) throws NotAvailableException {
         try {
-            if (locations.containsKey(locationId)) {
-                return locations.get(locationId).getMessage();
-            } else {
-                throw new InvalidStateException("Registry does not contains requested location Entry[" + locationId + "]");
+            for (final IdentifiableMessage<String, UnitConfig, UnitConfig.Builder> locationUnitConfig : locations.values()) {
+                if (isRootLocation(locationUnitConfig.getMessage(), locations)) {
+                    return locationUnitConfig.getMessage();
+                }
             }
+            throw new InvalidStateException("Registry does not provide a root location!");
+        } catch (CouldNotPerformException ex) {
+            throw new NotAvailableException("RootLocation", ex);
+        }
+    }
+
+    private static boolean isAuthenticationUnit(final UnitConfig unitConfig) {
+        switch (unitConfig.getType()) {
+            case USER:
+            case AUTHORIZATION_GROUP:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static UnitConfig getLocationUnitConfig(final String locationId, final Map<String, IdentifiableMessage<String, UnitConfig, UnitConfig.Builder>> locations) throws NotAvailableException {
+        try {
+            if (locationId.isEmpty()) {
+                throw new NotAvailableException("locationId");
+            }
+
+            if (!locations.containsKey(locationId)) {
+                LOGGER.warn("Registry does not contains requested location Entry[" + locationId + "] use root location as fallback to compute permissions.");
+                return getRootLocationUnitConfig(locations);
+            }
+            return locations.get(locationId).getMessage();
         } catch (CouldNotPerformException | NullPointerException ex) {
             // null pointer can occur if the registry is shutting down between the "contains" check and the "get".
-            throw new NotAvailableException("Location[" + locationId + "]", ex);
+            throw new NotAvailableException("LocationConfig[" + locationId + "]", ex);
         }
     }
 
-    private static PermissionConfig mergePermissionConfigs(PermissionConfig unitPermissionConfig, PermissionConfig locationPermissionConfig) {
+    private static PermissionConfig mergePermissionConfigs(final PermissionConfig unitPermissionConfig, final PermissionConfig parentLocationPermissionConfig) throws CouldNotPerformException {
         if (unitPermissionConfig == null) {
-            return locationPermissionConfig;
+            throw new NotAvailableException("UserPermissionConfig");
         }
 
-        if (locationPermissionConfig == null) {
-            return unitPermissionConfig;
+        if (parentLocationPermissionConfig == null) {
+            throw new NotAvailableException("ParentLocationPermissionConfig");
         }
 
-        PermissionConfig.Builder builder = PermissionConfig.newBuilder(unitPermissionConfig);
+        final PermissionConfig.Builder builder = PermissionConfig.newBuilder(unitPermissionConfig);
 
+        // merge other permission
         if (!unitPermissionConfig.hasOtherPermission() || !unitPermissionConfig.getOtherPermission().hasAccess() || !unitPermissionConfig.getOtherPermission().hasRead() || !unitPermissionConfig.getOtherPermission().hasWrite()) {
-            builder.setOtherPermission(locationPermissionConfig.getOtherPermission());
+            builder.setOtherPermission(parentLocationPermissionConfig.getOtherPermission());
         }
 
+        // merge owner permission
         if (!unitPermissionConfig.hasOwnerPermission() || !unitPermissionConfig.getOwnerPermission().hasAccess() || !unitPermissionConfig.getOwnerPermission().hasRead() || !unitPermissionConfig.getOwnerPermission().hasWrite()) {
-            builder.setOwnerPermission(locationPermissionConfig.getOwnerPermission());
+            builder.setOwnerPermission(parentLocationPermissionConfig.getOwnerPermission());
         }
 
         boolean found = false;
 
-        for (MapFieldEntry locationEntry : locationPermissionConfig.getGroupPermissionList()) {
+        // merge group permissions
+        for (MapFieldEntry locationEntry : parentLocationPermissionConfig.getGroupPermissionList()) {
             for (MapFieldEntry unitEntry : unitPermissionConfig.getGroupPermissionList()) {
                 if (locationEntry.getGroupId().equals(unitEntry.getGroupId())) {
                     found = true;
