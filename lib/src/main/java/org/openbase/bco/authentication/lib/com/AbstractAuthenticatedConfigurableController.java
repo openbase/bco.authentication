@@ -31,8 +31,8 @@ import org.openbase.jul.exception.InitializationException;
 import org.openbase.jul.exception.InstantiationException;
 import org.openbase.jul.exception.printer.ExceptionPrinter;
 import org.openbase.jul.exception.printer.LogLevel;
+import org.openbase.jul.extension.rsb.com.AbstractConfigurableController;
 import org.openbase.jul.extension.rsb.com.RPCHelper;
-import org.openbase.jul.extension.rsb.com.RSBCommunicationService;
 import rsb.config.ParticipantConfig;
 import rst.domotic.authentication.AuthenticatedValueType.AuthenticatedValue;
 import rst.domotic.authentication.TicketAuthenticatorWrapperType.TicketAuthenticatorWrapper;
@@ -40,16 +40,9 @@ import rst.rsb.ScopeType.Scope;
 
 import java.io.IOException;
 
+public abstract class AbstractAuthenticatedConfigurableController<M extends GeneratedMessage, MB extends M.Builder<MB>, CONFIG extends GeneratedMessage> extends AbstractConfigurableController<M, MB, CONFIG> implements AuthenticatedRequestable<M> {
 
-public abstract class AbstractAuthenticatedCommunicationService<M extends GeneratedMessage, MB extends M.Builder<MB>> extends RSBCommunicationService<M, MB> implements AuthenticatedRequestable<M> {
-
-    /**
-     * Create a communication service.
-     *
-     * @param builder the initial data builder
-     * @throws InstantiationException if the creation fails
-     */
-    public AbstractAuthenticatedCommunicationService(final MB builder) throws InstantiationException {
+    public AbstractAuthenticatedConfigurableController(MB builder) throws InstantiationException {
         super(builder);
     }
 

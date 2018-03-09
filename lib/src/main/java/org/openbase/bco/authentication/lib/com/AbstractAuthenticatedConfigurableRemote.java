@@ -27,7 +27,7 @@ import org.openbase.bco.authentication.lib.SessionManager;
 import org.openbase.bco.authentication.lib.iface.AuthenticatedRequestable;
 import org.openbase.jul.exception.CouldNotPerformException;
 import org.openbase.jul.exception.printer.ExceptionPrinter;
-import org.openbase.jul.extension.rsb.com.RSBRemoteService;
+import org.openbase.jul.extension.rsb.com.AbstractConfigurableRemote;
 import org.openbase.jul.pattern.Observer;
 import rsb.Event;
 import rsb.Handler;
@@ -35,12 +35,12 @@ import rst.domotic.authentication.TicketAuthenticatorWrapperType.TicketAuthentic
 
 import java.util.concurrent.Future;
 
-public abstract class AbstractAuthenticatedRemoteService<M extends GeneratedMessage> extends RSBRemoteService<M> {
+public class AbstractAuthenticatedConfigurableRemote<M extends GeneratedMessage, CONFIG extends GeneratedMessage> extends AbstractConfigurableRemote<M, CONFIG> {
 
     private final Observer<String> loginObserver;
 
-    public AbstractAuthenticatedRemoteService(Class<M> dataClass) {
-        super(dataClass);
+    public AbstractAuthenticatedConfigurableRemote(final Class<M> dataClass, final Class<CONFIG> configClass) {
+        super(dataClass, configClass);
         this.setMessageProcessor(new AuthenticatedMessageProcessor<>(dataClass));
 
         this.loginObserver = (source, data) -> requestData();
