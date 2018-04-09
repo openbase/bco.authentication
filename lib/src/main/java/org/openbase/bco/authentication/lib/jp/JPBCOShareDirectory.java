@@ -26,57 +26,52 @@ import org.openbase.jps.core.JPService;
 import org.openbase.jps.exception.JPServiceException;
 import org.openbase.jps.exception.JPValidationException;
 import org.openbase.jps.preset.AbstractJPDirectory;
+import org.openbase.jps.preset.JPPrefix;
 import org.openbase.jps.tools.FileHandler;
-import org.openbase.jul.exception.CouldNotPerformException;
-import org.openbase.jul.exception.printer.ExceptionPrinter;
 
 import java.io.File;
 
 /**
  * @author <a href="mailto:thuxohl@techfak.uni-bielefeld.de">Tamino Huxohl</a>
  */
-public class JPCredentialsDirectory extends AbstractJPDirectory {
+public class JPBCOShareDirectory extends AbstractJPDirectory {
 
-    public static final String DEFAULT_CREDENTIALS_PATH = "credentials";
-    public static final String[] COMMAND_IDENTIFIERS = {"--cr", "--credentials"};
+    public static final String DEFAULT_PATH = "share/bco";
+    public static final String[] COMMAND_IDENTIFIERS = {"--bco-share"};
 
     public static final FileHandler.ExistenceHandling EXISTENCE_HANDLING = FileHandler.ExistenceHandling.Must;
-    public static final FileHandler.AutoMode AUTO_MODE = FileHandler.AutoMode.On;
+    public static final FileHandler.AutoMode AUTO_MODE = FileHandler.AutoMode.Off;
 
-    public JPCredentialsDirectory() {
+    /**
+     * Default constructor needed for reflection access.
+     */
+    public JPBCOShareDirectory() {
         super(COMMAND_IDENTIFIERS, EXISTENCE_HANDLING, AUTO_MODE);
-        registerDependingProperty(JPBCOVarDirectory.class);
-        registerDependingProperty(JPResetCredentials.class);
+        registerDependingProperty(JPPrefix.class);
     }
 
     @Override
     public File getParentDirectory() throws JPServiceException {
-        if (JPService.getProperty(JPBCOVarDirectory.class).getValue().exists() || JPService.testMode()) {
-            return JPService.getProperty(JPBCOVarDirectory.class).getValue();
-        }
-        throw new JPServiceException("Could not auto detect bco var path!");
+        // declare default parent
+        return JPService.getProperty(JPPrefix.class).getValue();
     }
 
     @Override
     protected File getPropertyDefaultValue() {
-        return new File(DEFAULT_CREDENTIALS_PATH);
-    }
-
-    @Override
-    public String getDescription() {
-        return "Specifies the credential directory. If not already exist, this credential directory is auto created during startup.";
+        return new File(DEFAULT_PATH);
     }
 
     @Override
     public void validate() throws JPValidationException {
-        try {
-            if (JPService.getProperty(JPResetCredentials.class).getValue()) {
-                setAutoCreateMode(FileHandler.AutoMode.On);
-                setExistenceHandling(FileHandler.ExistenceHandling.MustBeNew);
-            }
-        } catch (JPServiceException ex) {
-            ExceptionPrinter.printHistory(new CouldNotPerformException("Could not access java property!", ex), logger);
+        if (JPService.testMode()) {
+            setAutoCreateMode(FileHandler.AutoMode.On);
+            setExistenceHandling(FileHandler.ExistenceHandling.Must);
         }
         super.validate();
+    }
+
+    @Override
+    public String getDescription() {
+        return "Property can be used to overwrite the variable data folder of bco. Those is per default placed at the bco home path and hosts the registry db.";
     }
 }
